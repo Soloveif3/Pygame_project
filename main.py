@@ -9,6 +9,7 @@ from pygame import K_RIGHT, KSCAN_D, KSCAN_S, K_LEFT
 from pygame.examples.aliens import Player
 from pygame.newbuffer import PyBUF_ND
 
+decorative_fon = pygame.sprite.Group()
 all_sprites = pygame.sprite.Group()
 hitboxes_group = pygame.sprite.Group()
 player_group = pygame.sprite.Group()
@@ -68,7 +69,7 @@ tile_images = {
     'bricks': load_image('sprites/interviev/Bricks.png'),
     'lucky': load_image('sprites/interviev/Lucky_block.png')
 }
-player_image = load_image('sprites/mario/images.jpg')
+player_image = load_image('sprites/mario/mario_frames.png')
 
 tile_width = tile_height = 50
 
@@ -115,6 +116,12 @@ class Player(pygame.sprite.Sprite):
     def __init__(self, group, pos_x, pos_y):
         super().__init__(group, all_sprites)
 
+        self.move_status = 'static'
+
+        self.frames = []
+        self.cut_sheet()
+        self.cur_frame = 0
+
         self.player_vel_y = 0
         self.player_jump = False
         self.height = 0
@@ -122,28 +129,44 @@ class Player(pygame.sprite.Sprite):
         self.rotation = 1
         self.speed = 1
         self.image = pygame.transform.scale(player_image, (tile_width - 10, tile_height))
-        # self.image.set_colorkey((255, 255, 255))
+        self.image.set_colorkey((255, 255, 255))
 
         self.rect = self.image.get_rect().move(
             tile_width * pos_x, tile_height * pos_y + 5)
+        self.make_hitboxes()
 
+    def make_hitboxes(self):
         self.left_hitbox = Hitbox(hitboxes_group, self.rect.x - 1, self.rect.y, 2, tile_height - 10)
-        self.right_hitbox = Hitbox(hitboxes_group, self.rect.topright[0], self.rect.y, 2, tile_height - 10)
+        self.right_hitbox = Hitbox(hitboxes_group, self.rect.topright[0], self.rect.y, 5, tile_height - 10)
 
-        # self.head_hitbox = Hitbox(hitboxes_group, self.rect.x + 5, self.rect.y + 5, 140, 10)
-        self.leg_hitbox = Hitbox(hitboxes_group, self.rect.bottomleft[0] + 3, self.rect.bottomleft[1], tile_width - 13, 1)
+        self.head_hitbox = Hitbox(hitboxes_group, self.rect.x + 5, self.rect.y + 5, 140, 10)
+        self.leg_hitbox = Hitbox(hitboxes_group, self.rect.bottomleft[0] + 3, self.rect.bottomleft[1],
+                                 tile_width - 13, 10)
         self.touch_floor_hitbox = Hitbox(hitboxes_group, self.rect.bottomleft[0] - 1, self.rect.bottomleft[1],
                                          tile_width - 10, 1)
+
+    def cut_sheet(self, sheet, columns, rows):
+        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
+                                sheet.get_height() // rows)
+        for j in range(rows):
+            for i in range(columns):
+                frame_location = (self.rect.w * i, self.rect.h * j)
+                self.frames.append(sheet.subsurface(pygame.Rect(
+                    frame_location, self.rect.size)))
 
     def update(self):
         self.rect = self.rect.move(0, self.player_vel_y)
         if self.player_vel_y < 10:
             self.player_vel_y += 1
-        if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
+        if pygame.sprite.spritecollideany(self.touch_floor_hitbox, tiles_group):
             self.player_jump = False
             self.player_vel_y = 0
-        if pygame.sprite.spritecollideany(self.touch_floor_hitbox, tiles_group) and pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
-            self.rect.y -= 2
+        if pygame.sprite.spritecollideany(self.touch_floor_hitbox, tiles_group):
+            self.rect.y -= 1
+
+        self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+        self.image = self.frames[self.cur_frame]
+
         self.hitbox_move()
 
     def hitbox_move(self):
@@ -156,26 +179,24 @@ class Player(pygame.sprite.Sprite):
         self.touch_floor_hitbox.rect.x = self.rect.x
         self.touch_floor_hitbox.rect.y = self.rect.bottomleft[1] - 1
 
-        self.leg_hitbox.rect.x = self.rect.x
-        self.leg_hitbox.rect.y = self.rect.bottomleft[1]
+        #self.leg_hitbox.rect.x = self.rect.x
+        #self.leg_hitbox.rect.y = self.rect.bottomleft[1]
 
     def move_right(self, direction):
-        self.rect = self.rect.move(10, 0)
-        if self.rotation == -1:
-            self.image = pygame.transform.flip(self.image, True, False)
-            self.rotation = 1
+        if not pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
+            self.rect = self.rect.move(10, 0)
+        self.move_status = 'move_right'
 
     def move_left(self, direction):
-        if self.rotation == 1:
-            self.image = pygame.transform.flip(self.image, True, False)
-            self.rotation = -1
         if not pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
             self.rect = self.rect.move(-10, 0)
+        self.move_status = 'move_left'
 
     def jump(self):
         if not self.player_jump:
             self.player_vel_y = -15
             self.player_jump = True
+        self.move_status = 'in_jump'
 
 
 class Button(pygame.sprite.Sprite):
@@ -293,6 +314,7 @@ def main_game():
     running = True
     a = load_level('1_level.txt')
     pl, x, y = generate_level(a)
+    fon = pygame.transform.scale(load_image('sprites/interface/menu_fon.jpg'), (width, height))
 
     camera = Camera()
     # pygame.mixer.music.load('data/sounds/super-mario-saundtrek.mp3')
@@ -309,19 +331,26 @@ def main_game():
         if keys[pygame.K_SPACE]:
             pl.jump()
 
+        if pl.rect.y > height:
+            tiles_group.empty()
+            a = None
+            break
+
         camera.update(pl)
         for sprite in all_sprites:
             camera.apply(sprite)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                tiles_group.empty()
+                player_group.empty()
                 pygame.mixer.music.stop()
-
+        screen.blit(fon, (0, 0))
         player_group.update()
 
         player_group.draw(screen)
         tiles_group.draw(screen)
-        hitboxes_group.draw(screen)
+        # hitboxes_group.draw(screen)
         pygame.display.flip()
         clock.tick(30)
 
