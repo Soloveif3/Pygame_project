@@ -44,7 +44,7 @@ def generate_level(level):
             elif level[y][x] == '-':
                 Tile('floor', x, y)
             elif level[y][x] == '@':
-                new_player = Player(player_group, x, y)
+                new_player = Player(player_group, x * tile_width, y * tile_height)
     # вернем игрока, а также размер поля в клетках
     return new_player, x, y
 
@@ -69,7 +69,6 @@ tile_images = {
     'bricks': load_image('sprites/interviev/Bricks.png'),
     'lucky': load_image('sprites/interviev/Lucky_block.png')
 }
-player_image = load_image('sprites/mario/mario_frames.png')
 
 tile_width = tile_height = 50
 
@@ -82,27 +81,13 @@ class Tile(pygame.sprite.Sprite):
         self.rect = self.image.get_rect().move(
             tile_width * pos_x, tile_height * pos_y)
 
-
-# class Player(pygame.sprite.Sprite):
-#     def __init__(self, sheet, columns, rows, x, y):
-#         super().__init__()
-#         self.frames = []
-#         self.cut_sheet(sheet, columns, rows)
-#         self.cur_frame = 0
-#         self.image = pygame.transform.scale(load_image('sprites/mario/images.jpg'), (tile_width, tile_height))
-#         # self.image = self.frames[self.cur_frame]
-#         self.rect = self.rect.move(x, y)
-#
-#     def cut_sheet(self, sheet, columns, rows):
-#         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns, sheet.get_height() // rows)
-#         for j in range(rows):
-#             for i in range(columns):
-#                 frame_location = (self.rect.w * i, self.rect.h * j)
-#                 self.frames.append(sheet.subsurface(pygame.Rect(frame_location, self.rect.size)))
-#
-#     def update(self):
-#         self.cur_frame = (self.cur_frame + 1) % len(self.frames)
-#         self.image = self.frames[self.cur_frame]
+    def __call__(self, *args):
+        if args[1] == 'y':
+            print(args[0], self.rect.y, abs(args[0] - self.rect.y))
+            return abs(args[0] - self.rect.y)
+        else:
+            print(args[0], self.rect.x, abs(args[0] - self.rect.x))
+            return abs(args[0] - self.rect.x)
 
 
 class Hitbox(pygame.sprite.Sprite):
@@ -115,88 +100,140 @@ class Hitbox(pygame.sprite.Sprite):
 class Player(pygame.sprite.Sprite):
     def __init__(self, group, pos_x, pos_y):
         super().__init__(group, all_sprites)
-
-        self.move_status = 'static'
-
+        self.frame_time = 0
         self.frames = []
-        self.cut_sheet()
+        self.cut_frames()
         self.cur_frame = 0
 
+        # параметры движения
+        self.touch_floor = False
+        self.diference = 0
+        self.player_speed = 0
         self.player_vel_y = 0
         self.player_jump = False
+
         self.height = 0
         self.width = 0
         self.rotation = 1
-        self.speed = 1
-        self.image = pygame.transform.scale(player_image, (tile_width - 10, tile_height))
+        self.image = self.frames[-2]
         self.image.set_colorkey((255, 255, 255))
 
-        self.rect = self.image.get_rect().move(
-            tile_width * pos_x, tile_height * pos_y + 5)
+        self.rect = pygame.rect.Rect(pos_x, pos_y, tile_width, tile_height)
         self.make_hitboxes()
 
     def make_hitboxes(self):
-        self.left_hitbox = Hitbox(hitboxes_group, self.rect.x - 1, self.rect.y, 2, tile_height - 10)
-        self.right_hitbox = Hitbox(hitboxes_group, self.rect.topright[0], self.rect.y, 5, tile_height - 10)
+        self.left_hitbox = Hitbox(hitboxes_group, 0, 0, 2, tile_height - 13)
+        self.right_hitbox = Hitbox(hitboxes_group, 0, 0, 2, tile_height - 13)
+        self.head_hitbox = Hitbox(hitboxes_group, 0, 0, tile_width - 10, 1)
+        self.leg_hitbox = Hitbox(hitboxes_group, 0, 0, tile_width - 10, 1)
 
-        self.head_hitbox = Hitbox(hitboxes_group, self.rect.x + 5, self.rect.y + 5, 140, 10)
-        self.leg_hitbox = Hitbox(hitboxes_group, self.rect.bottomleft[0] + 3, self.rect.bottomleft[1],
-                                 tile_width - 13, 10)
-        self.touch_floor_hitbox = Hitbox(hitboxes_group, self.rect.bottomleft[0] - 1, self.rect.bottomleft[1],
-                                         tile_width - 10, 1)
+    def cut_frames(self):  # вырезка картинок для анимаций
+        self.frames.append(pygame.transform.scale(load_image('sprites/mario/injump.png'), (tile_width, tile_height)))
+        self.frames.append(pygame.transform.scale(load_image('sprites/mario/lose.png'), (tile_width, tile_height)))
+        self.frames.append(pygame.transform.scale(load_image('sprites/mario/run_1.png'), (tile_width, tile_height)))
+        self.frames.append(pygame.transform.scale(load_image('sprites/mario/run_2.png'), (tile_width, tile_height)))
+        self.frames.append(pygame.transform.scale(load_image('sprites/mario/stay.png'), (tile_width, tile_height)))
+        self.frames.append(pygame.transform.scale(load_image('sprites/mario/turn.png'), (tile_width, tile_height)))
 
-    def cut_sheet(self, sheet, columns, rows):
-        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
-                                sheet.get_height() // rows)
-        for j in range(rows):
-            for i in range(columns):
-                frame_location = (self.rect.w * i, self.rect.h * j)
-                self.frames.append(sheet.subsurface(pygame.Rect(
-                    frame_location, self.rect.size)))
-
-    def update(self):
-        self.rect = self.rect.move(0, self.player_vel_y)
-        if self.player_vel_y < 10:
+    def update(self, keys=None):
+        if self.player_vel_y < 10 and self.player_jump:
             self.player_vel_y += 1
-        if pygame.sprite.spritecollideany(self.touch_floor_hitbox, tiles_group):
-            self.player_jump = False
+        # проверка на столкновения
+        if pygame.sprite.spritecollideany(self.head_hitbox, tiles_group):
+            self.player_vel_y = 1
+        if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
+            self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
+            self.rect.y -= self.diference
             self.player_vel_y = 0
-        if pygame.sprite.spritecollideany(self.touch_floor_hitbox, tiles_group):
-            self.rect.y -= 1
-
-        self.cur_frame = (self.cur_frame + 1) % len(self.frames)
-        self.image = self.frames[self.cur_frame]
-
+            self.player_jump = False
+            if self.diference == 0:
+                self.touch_floor = True
+        else:
+            self.player_jump = True
+            self.touch_floor = False
+        if not (keys[K_RIGHT] or keys[K_LEFT]):
+            if self.player_speed > 0:
+                self.player_speed -= 1
+            elif self.player_speed < 0:
+                self.player_speed += 1
+        print(self.player_jump)
+        print(self.player_vel_y)
+        self.rect.x += self.player_speed
+        self.rect.y += self.player_vel_y
         self.hitbox_move()
+        self.anim()  # анимация (смена фреима)
+
+    def anim(self):
+        if self.player_jump:
+            self.image = self.frames[0]
+        elif self.player_speed:
+            self.image = self.frames[2]
+        else:
+            self.image = self.frames[-2]
+
+    def check_floor(self):
+        if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
+            self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomright[1], 'y')
+            self.rect.y -= self.diference
+            self.player_vel_y = 0
+            self.player_jump = False
+        if self.diference == 0:
+            self.touch_floor = True
 
     def hitbox_move(self):
         self.right_hitbox.rect.x = self.rect.bottomright[0]
-        self.right_hitbox.rect.y = self.rect.y + 3
+        self.right_hitbox.rect.y = self.rect.y + 6
 
         self.left_hitbox.rect.x = self.rect.x - 1
-        self.left_hitbox.rect.y = self.rect.y + 3
+        self.left_hitbox.rect.y = self.rect.y + 6
 
-        self.touch_floor_hitbox.rect.x = self.rect.x
-        self.touch_floor_hitbox.rect.y = self.rect.bottomleft[1] - 1
+        self.leg_hitbox.rect.x = self.rect.x + 5
+        self.leg_hitbox.rect.y = self.rect.bottomleft[1]
 
-        #self.leg_hitbox.rect.x = self.rect.x
-        #self.leg_hitbox.rect.y = self.rect.bottomleft[1]
+        self.head_hitbox.rect.x = self.rect.x + 5
+        self.head_hitbox.rect.y = self.rect.y
 
-    def move_right(self, direction):
-        if not pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
-            self.rect = self.rect.move(10, 0)
-        self.move_status = 'move_right'
+    def move_right(self):
+        if not self.touch_floor:
+            self.check_floor()
+            if not pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
+                if self.player_speed < 10:
+                    self.player_speed += 1
+            else:
+                self.check_floor()
+                if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.bottomright[1], 'x'):
+                    diference = pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.x + tile_width,
+                                                                                                   'x')
+                    self.rect.x -= diference
+                    self.player_speed = 0
 
-    def move_left(self, direction):
-        if not pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
-            self.rect = self.rect.move(-10, 0)
-        self.move_status = 'move_left'
+            # self.rect = self.rect.move(self.player_speed, 0)
+            self.rotation = 1
+            self.hitbox_move()
 
-    def jump(self):
+    def move_left(self):
+        if not self.touch_floor:
+            if not pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
+                if self.player_speed > -10:
+                    self.player_speed -= 1
+            else:
+                if pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.bottomleft[1], 'x'):
+                    diference = pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.x - tile_width,
+                                                                                                  'x')
+                    self.rect.x += diference
+                    self.player_speed = 0
+
+                # self.rect = self.rect.move(self.player_speed, 0)
+            self.rotation = -1
+            self.hitbox_move()
+
+    def jump(self, sound):
         if not self.player_jump:
-            self.player_vel_y = -15
+            self.player_vel_y -= 15
+            self.rect.y -= 2
             self.player_jump = True
-        self.move_status = 'in_jump'
+            sound.play()
+        self.hitbox_move()
 
 
 class Button(pygame.sprite.Sprite):
@@ -272,26 +309,14 @@ def level_select_screen():
 
 
 def start_screen():
-    intro_text = ["ЗАСТАВКА", "",
-                  "Правила игры",
-                  "Если в правилах несколько строк,",
-                  "приходится выводить их построчно"]
-
     pygame.init()
     fon = pygame.transform.scale(load_image('sprites/interface/menu_fon.jpg'), (width, height))
     screen.blit(fon, (0, 0))
     font = pygame.font.Font(None, 30)
     text_coord = 50
-    for line in intro_text:
-        string_rendered = font.render(line, 1, pygame.Color('black'))
-        intro_rect = string_rendered.get_rect()
-        text_coord += 10
-        intro_rect.top = text_coord
-        intro_rect.x = 10
-        text_coord += intro_rect.height
-        screen.blit(string_rendered, intro_rect)
 
-    start = Button(menu_sprites, 'sprites/interface/Play.png', 'sprites/interface/Button_fon.png', main_game, width // 2 - 50,
+    start = Button(menu_sprites, 'sprites/interface/Play.png', 'sprites/interface/Button_fon.png', main_game,
+                   width // 2 - 50,
                    height // 2 - 50, 100, 100)
 
     while True:
@@ -319,22 +344,22 @@ def main_game():
     camera = Camera()
     # pygame.mixer.music.load('data/sounds/super-mario-saundtrek.mp3')
     # pygame.mixer.music.play()
-    # sound1 = pygame.mixer.Sound('boom.wav')
+    mario_jump = pygame.mixer.Sound('data/sounds/mario_jump.mp3')
 
     while running:
-        screen.fill((100, 100, 100, 0))
+        screen.fill((92, 148, 252, 0))
         keys = pygame.key.get_pressed()
         if keys[K_RIGHT]:
-            pl.move_right(1)
-        if keys[K_LEFT]:
-            pl.move_left(1)
+            pl.move_right()
+        elif keys[K_LEFT]:
+            pl.move_left()
         if keys[pygame.K_SPACE]:
-            pl.jump()
+            pl.jump(mario_jump)
 
         if pl.rect.y > height:
+            player_group.empty()
             tiles_group.empty()
-            a = None
-            break
+            hitboxes_group.empty()
 
         camera.update(pl)
         for sprite in all_sprites:
@@ -342,15 +367,15 @@ def main_game():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-                tiles_group.empty()
                 player_group.empty()
+                tiles_group.empty()
+                hitboxes_group.empty()
                 pygame.mixer.music.stop()
-        screen.blit(fon, (0, 0))
-        player_group.update()
+        player_group.update(keys)
 
         player_group.draw(screen)
         tiles_group.draw(screen)
-        # hitboxes_group.draw(screen)
+        hitboxes_group.draw(screen)
         pygame.display.flip()
         clock.tick(30)
 
