@@ -8,7 +8,9 @@ import random
 from pygame import K_RIGHT, KSCAN_D, KSCAN_S, K_LEFT
 from pygame.examples.aliens import Player
 from pygame.newbuffer import PyBUF_ND
+from pygame.transform import scale
 
+particles_group = pygame.sprite.Group()
 decorative_fon = pygame.sprite.Group()
 all_sprites = pygame.sprite.Group()
 hitboxes_group = pygame.sprite.Group()
@@ -19,6 +21,7 @@ menu_sprites = pygame.sprite.Group()
 pause_buttons = pygame.sprite.Group()
 
 size = width, height = 1500, 1000
+screen_rect = (0, 0, width, height)
 screen = pygame.display.set_mode(size)
 FPS = 60
 clock = pygame.time.Clock()
@@ -43,6 +46,10 @@ def generate_level(level):
                 Tile('bricks', x, y)
             elif level[y][x] == '-':
                 Tile('floor', x, y)
+            elif level[y][x] == '?':
+                Tile('lucky', x, y)
+            elif level[y][x] == '*':
+                Tile('brick_undest', x, y)
             elif level[y][x] == '@':
                 new_player = Player(player_group, x * tile_width, y * tile_height)
     # вернем игрока, а также размер поля в клетках
@@ -67,10 +74,52 @@ def terminate():
 tile_images = {
     'floor': load_image('sprites/interviev/floor.png'),
     'bricks': load_image('sprites/interviev/Bricks.png'),
-    'lucky': load_image('sprites/interviev/Lucky_block.png')
+    'lucky': load_image('sprites/interviev/Lucky_block.png'),
+    'brick_undest': load_image('sprites/interviev/brick_undest.png')
 }
 
 tile_width = tile_height = 50
+
+
+class Particle(pygame.sprite.Sprite):
+    # сгенерируем частицы разного размера
+    fire = [pygame.transform.scale(load_image("sprites/interviev/brick_particle.png"), (10, 10))]
+    for scale in (3, 5, 10):
+        fire.append(pygame.transform.rotate(pygame.transform.scale(fire[0], (scale, scale * 2)), random.randint(0,
+                                                                                                            360)))
+
+    def __init__(self, pos, dx, dy):
+        super().__init__(particles_group, all_sprites)
+        self.image = random.choice(self.fire)
+        self.rect = self.image.get_rect()
+
+        # у каждой частицы своя скорость — это вектор
+        self.velocity = [dx, dy]
+        # и свои координаты
+        self.rect.x, self.rect.y = pos
+
+        # гравитация будет одинаковой (значение константы)
+        self.gravity = 1
+
+    def update(self):
+        # применяем гравитационный эффект:
+        # движение с ускорением под действием гравитации
+        self.velocity[1] += self.gravity
+        # перемещаем частицу
+        self.rect.x += self.velocity[0]
+        self.rect.y += self.velocity[1]
+        # убиваем, если частица ушла за экран
+        if not self.rect.colliderect(screen_rect):
+            self.kill()
+
+
+def create_particles(position):
+    # количество создаваемых частиц
+    particle_count = 20
+    # возможные скорости
+    numbers = range(-5, 6)
+    for _ in range(particle_count):
+        Particle(position, random.choice(numbers), random.choice(numbers))
 
 
 class Tile(pygame.sprite.Sprite):
@@ -78,8 +127,42 @@ class Tile(pygame.sprite.Sprite):
         super().__init__(tiles_group, all_sprites)
         im = pygame.transform.scale(tile_images[tile_type], (tile_height, tile_width))
         self.image = im
+        self.pos_in_level_x = pos_x
+        self.pos_in_level_y = pos_y
+        self.x_normal = pos_x * tile_width
+        self.y_normal = pos_y * tile_height
         self.rect = self.image.get_rect().move(
-            tile_width * pos_x, tile_height * pos_y)
+            self.x_normal, self.y_normal)
+        self.tile_type = tile_type
+        self.y_vel = 0
+        self.anim_going = False
+
+    def jump_anim(self):
+        self.y_vel = -3
+        self.anim_going = True
+
+    def destroy_anim(self):
+        create_particles(self.rect.center)
+
+    def update(self):
+        if self.anim_going:
+            self.rect.y += self.y_vel
+            self.y_vel += 0.3
+        if self.y_vel > 3:
+            self.anim_going = False
+            self.rect.y = self.y_normal
+
+    def do_smth(self, do, speed):
+        if do == 'destroy':
+            if speed < -5:
+                self.destroy_anim()
+                tiles_group.remove(self)
+            elif -5 <= speed <= 0:
+                self.jump_anim()
+
+    def __getitem__(self, item):  # для того чтобы проверить что делать с блоком при прикосновенний и тп
+        if self.tile_type == 'bricks':
+            self.do_smth('destroy', item)
 
     def __call__(self, *args):
         if args[1] == 'y':
@@ -139,18 +222,19 @@ class Player(pygame.sprite.Sprite):
         if self.player_vel_y < 10 and self.player_jump:
             self.player_vel_y += 1
         # проверка на столкновения
+        self.walls()
         if pygame.sprite.spritecollideany(self.head_hitbox, tiles_group):
+            pygame.sprite.spritecollideany(self.head_hitbox, tiles_group)[self.player_vel_y]
             self.player_vel_y = 1
         if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
             self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
             self.rect.y -= self.diference
             self.player_vel_y = 0
             self.player_jump = False
-            if self.diference == 0:
-                self.touch_floor = True
         else:
             self.player_jump = True
             self.touch_floor = False
+        self.hitbox_move()
         if not (keys[K_RIGHT] or keys[K_LEFT]):
             if self.player_speed > 0:
                 self.player_speed -= 1
@@ -166,19 +250,10 @@ class Player(pygame.sprite.Sprite):
     def anim(self):
         if self.player_jump:
             self.image = self.frames[0]
-        elif self.player_speed:
+        elif self.player_speed > 2:
             self.image = self.frames[2]
         else:
             self.image = self.frames[-2]
-
-    def check_floor(self):
-        if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
-            self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomright[1], 'y')
-            self.rect.y -= self.diference
-            self.player_vel_y = 0
-            self.player_jump = False
-        if self.diference == 0:
-            self.touch_floor = True
 
     def hitbox_move(self):
         self.right_hitbox.rect.x = self.rect.bottomright[0]
@@ -193,39 +268,60 @@ class Player(pygame.sprite.Sprite):
         self.head_hitbox.rect.x = self.rect.x + 5
         self.head_hitbox.rect.y = self.rect.y
 
+    def floor(self):
+        if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
+            self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
+            self.rect.y -= self.diference
+            self.player_vel_y = 0
+            self.player_jump = False
+        else:
+            self.player_jump = True
+            self.touch_floor = False
+
+    def walls(self):
+        if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
+            diference = pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.x + tile_width, 'x')
+            self.rect.x -= diference
+            # self.player_speed = -1
+
+        if pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
+            diference = pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.x - tile_width, 'x')
+            self.rect.x += diference
+            # self.player_speed = 1
+
     def move_right(self):
-        if not self.touch_floor:
-            self.check_floor()
-            if not pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
-                if self.player_speed < 10:
-                    self.player_speed += 1
-            else:
-                self.check_floor()
-                if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.bottomright[1], 'x'):
-                    diference = pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.x + tile_width,
+        self.floor()
+        self.hitbox_move()
+        if not pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
+            if self.player_speed < 10:
+                self.player_speed += 1
+        else:
+            if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.bottomright[1], 'x'):
+                diference = pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.x + tile_width,
                                                                                                    'x')
-                    self.rect.x -= diference
-                    self.player_speed = 0
+                self.rect.x -= diference
+                self.player_speed = 0
 
             # self.rect = self.rect.move(self.player_speed, 0)
-            self.rotation = 1
-            self.hitbox_move()
+        self.rotation = 1
+        self.hitbox_move()
 
     def move_left(self):
-        if not self.touch_floor:
-            if not pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
-                if self.player_speed > -10:
-                    self.player_speed -= 1
-            else:
-                if pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.bottomleft[1], 'x'):
-                    diference = pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.x - tile_width,
+        self.floor()
+        self.hitbox_move()
+        if not pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
+            if self.player_speed > -10:
+                self.player_speed -= 1
+        else:
+            if pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.bottomleft[1], 'x'):
+                diference = pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.x - tile_width,
                                                                                                   'x')
-                    self.rect.x += diference
-                    self.player_speed = 0
+                self.rect.x += diference
+                self.player_speed = 0
 
                 # self.rect = self.rect.move(self.player_speed, 0)
-            self.rotation = -1
-            self.hitbox_move()
+        self.rotation = -1
+        self.hitbox_move()
 
     def jump(self, sound):
         if not self.player_jump:
@@ -371,11 +467,16 @@ def main_game():
                 tiles_group.empty()
                 hitboxes_group.empty()
                 pygame.mixer.music.stop()
-        player_group.update(keys)
 
+        player_group.update(keys)
+        tiles_group.update()
+        particles_group.update()
+
+        particles_group.draw(screen)
         player_group.draw(screen)
         tiles_group.draw(screen)
         hitboxes_group.draw(screen)
+
         pygame.display.flip()
         clock.tick(30)
 
