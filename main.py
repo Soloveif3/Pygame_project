@@ -96,8 +96,8 @@ tile_width = tile_height = 50
 class Particle(pygame.sprite.Sprite):
     # сгенерируем частицы разного размера
     fire = [pygame.transform.scale(load_image("sprites/interviev/brick_particle.png"), (10, 10))]
-    for scale in (3, 5, 10):
-        fire.append(pygame.transform.rotate(pygame.transform.scale(fire[0], (scale, scale * 2)), random.randint(0,
+    for scale in (8, 10, 15):
+        fire.append(pygame.transform.rotate(pygame.transform.scale(fire[0], (scale, scale)), random.randint(0,
                                                                                                             360)))
 
     def __init__(self, pos, dx, dy):
@@ -111,7 +111,7 @@ class Particle(pygame.sprite.Sprite):
         self.rect.x, self.rect.y = pos
 
         # гравитация будет одинаковой (значение константы)
-        self.gravity = 1
+        self.gravity = 0.7
 
     def update(self):
         # применяем гравитационный эффект:
@@ -291,9 +291,9 @@ class Gribocheck(pygame.sprite.Sprite):
     def __getitem__(self, item):
         if self.tile_type == 'life':
             entity_group.remove(self)
-            return 1, 100, 0
+            return 1, 100
         if self.tile_type == 'grib':
-            return -1, -50, 3000000
+            return -1, -50
 
     def make_hitboxes(self):
         self.left_hitbox = Hitbox(hitboxes_group, 0, 0, 2, self.rect.height - 3)
@@ -358,6 +358,7 @@ class Player(pygame.sprite.Sprite):
 
         # уязвим ли игрок сейчас
         self.invisibility = False
+        self.invisibility_time = 0
 
         # параметры движения
         self.touch_floor = False
@@ -411,14 +412,21 @@ class Player(pygame.sprite.Sprite):
             self.touch_floor = False
         if pygame.sprite.spritecollideany(self, entity_group):
             do = pygame.sprite.spritecollideany(self, entity_group)[self.score]
-            self.invisibility = do[2]
-            self.score += do[1]
-            if self.invisibility > 0 > self.lives:
-                pass
+
+            if do[0] < 0:
+                if not self.invisibility:
+                    self.lives += do[0]
+                    self.invisibility_time = 250
+                    self.score += do[1]
             else:
                 self.lives += do[0]
+                self.score += do[1]
 
-        self.invisibility -= 0.5
+        if self.invisibility_time <= 0:
+            self.invisibility = False
+        else:
+            self.invisibility = True
+        self.invisibility_time -= 3
         self.hitbox_move()
         # если игрок(жмет кнопки) не идет, то он замедляется
         if not (keys[K_RIGHT] or keys[K_LEFT]):
@@ -433,14 +441,16 @@ class Player(pygame.sprite.Sprite):
         self.rect.x += self.player_speed
         self.rect.y += self.player_vel_y
         self.hitbox_move()
-        self.anim()  # анимация (смена фреима)
+        self.anim(keys)  # анимация (смена фреима)
 
     def get_stats(self):
         return self.lives, self.score
 
-    def anim(self):
+    def anim(self, keys):
         if self.player_jump:
             self.image = self.frames[0]
+        elif (keys[K_RIGHT] and self.player_speed < 0) or keys[K_LEFT] and self.player_speed > 0:
+            self.image = self.frames[-1]
         elif self.player_speed > 2:
             self.image = self.frames[2]
         else:
@@ -654,7 +664,7 @@ def main_game():
 
     # загружаем звуки
     pygame.mixer.music.load('data/sounds/super-mario-saundtrek.mp3')
-    pygame.mixer.music.play()
+    pygame.mixer.music.play(-1)
     # mario_jump_sound = pygame.mixer.Sound('data/sounds/mario_jump.mp3')  # прыжок
     # destroying_sound = pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3')  # разрушение
     # sounds = [mario_jump_sound, destroying_sound]
