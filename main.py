@@ -159,9 +159,9 @@ class Entity(pygame.sprite.Sprite):
     def __getitem__(self, item):
         if self.tile_type == 'life':
             entity_group.remove(self)
-            return 1, 100
+            return 1, 100, 0
         if self.tile_type == 'grib':
-            return -1, -50
+            return -1, -50, 3000
 
     def make_hitboxes(self):
         self.left_hitbox = Hitbox(hitboxes_group, 0, 0, 2, self.rect.height - 3)
@@ -291,9 +291,9 @@ class Gribocheck(pygame.sprite.Sprite):
     def __getitem__(self, item):
         if self.tile_type == 'life':
             entity_group.remove(self)
-            return 1, 100
+            return 1, 100, 0
         if self.tile_type == 'grib':
-            return -1, -50
+            return -1, -50, 3000000
 
     def make_hitboxes(self):
         self.left_hitbox = Hitbox(hitboxes_group, 0, 0, 2, self.rect.height - 3)
@@ -411,9 +411,14 @@ class Player(pygame.sprite.Sprite):
             self.touch_floor = False
         if pygame.sprite.spritecollideany(self, entity_group):
             do = pygame.sprite.spritecollideany(self, entity_group)[self.score]
-            self.lives += do[0]
+            self.invisibility = do[2]
             self.score += do[1]
+            if self.invisibility > 0 > self.lives:
+                pass
+            else:
+                self.lives += do[0]
 
+        self.invisibility -= 0.5
         self.hitbox_move()
         # если игрок(жмет кнопки) не идет, то он замедляется
         if not (keys[K_RIGHT] or keys[K_LEFT]):
@@ -430,7 +435,7 @@ class Player(pygame.sprite.Sprite):
         self.hitbox_move()
         self.anim()  # анимация (смена фреима)
 
-    def get_lives(self):
+    def get_stats(self):
         return self.lives, self.score
 
     def anim(self):
@@ -684,7 +689,7 @@ def main_game():
         entity_group.update()
         particles_group.update()
 
-        l_s = pl.get_lives()
+        l_s = pl.get_stats()
         if not l_s[0]:
             terminate()
         draw_groups(screen, ('Score', l_s[1], 'lives', l_s[0]))
