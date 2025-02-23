@@ -60,6 +60,8 @@ def generate_level(level):
                 Decor('trava', x, y)
             elif level[y][x] == 'G':
                 Gribocheck('grib', x, y)
+            elif level[y][x] == 'F':
+                Finish('finish', x, y)
             elif level[y][x] == '@':
                 new_player = Player(player_group, x * tile_width, y * tile_height)
     # вернем игрока, а также размер поля в клетках
@@ -96,6 +98,28 @@ entity_images = {
 }
 
 tile_width = tile_height = 50
+
+
+class Finish(pygame.sprite.Sprite):
+    def __init__(self, tile_type, pos_x, pos_y):
+        super().__init__(tiles_group, all_sprites)
+        im = pygame.transform.scale(load_image('sprites/interviev/pipe.png'), (tile_width * 2, tile_height * 2))
+        self.image = im
+        self.x_normal = pos_x * tile_width
+        self.y_normal = (pos_y - 1) * tile_height
+        self.rect = self.image.get_rect().move(
+            self.x_normal, self.y_normal)
+
+    def __getitem__(self, item):  # для того чтобы проверить что делать с блоком при прикосновенний и тп
+        return 0
+
+    def __call__(self, *args):
+        if args[1] == 'y':
+            print(args[0], self.rect.y, abs(args[0] - self.rect.y))
+            return abs(args[0] - self.rect.y)
+        else:
+            print(args[0], self.rect.x, abs(args[0] - self.rect.x))
+            return abs(args[0] - self.rect.x)
 
 
 class Particle(pygame.sprite.Sprite):
@@ -751,9 +775,9 @@ def draw_groups(screen, texts):
     decor_group.draw(screen)
     entity_group.draw(screen)
     particles_group.draw(screen)
-    tiles_group.draw(screen)
     hitboxes_group.draw(screen)
     player_group.draw(screen)
+    tiles_group.draw(screen)
     for i in range(0, len(texts), 2):
         draw_text(screen, texts[i], texts[i + 1], i * 200 + 100, 50, 40, 40)
 
