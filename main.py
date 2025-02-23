@@ -1,18 +1,17 @@
-from os import close
-
 import pygame
 import os
 import sys
+import json
 import random
 
 from pygame import K_RIGHT, KSCAN_D, KSCAN_S, K_LEFT, KSCAN_A, K_UP
 from pygame.examples.aliens import Player
-from pygame.newbuffer import PyBUF_ND
-from pygame.transform import scale
+from time import sleep
 
 particles_group = pygame.sprite.Group()
 decorative_fon = pygame.sprite.Group()
 
+decor_group = pygame.sprite.Group()
 entity_group = pygame.sprite.Group()
 all_sprites = pygame.sprite.Group()
 hitboxes_group = pygame.sprite.Group()
@@ -55,6 +54,10 @@ def generate_level(level):
                 Tile('brick_undest', x, y)
             elif level[y][x] == '\"':
                 Entity('life', x, y)
+            elif level[y][x] == 'O':
+                Decor('oblaco', x, y)
+            elif level[y][x] == 'T':
+                Decor('trava', x, y)
             elif level[y][x] == 'G':
                 Gribocheck('grib', x, y)
             elif level[y][x] == '@':
@@ -82,7 +85,9 @@ tile_images = {
     'floor': load_image('sprites/interviev/floor.png'),
     'bricks': load_image('sprites/interviev/Bricks.png'),
     'lucky': load_image('sprites/interviev/Lucky_block.png'),
-    'brick_undest': load_image('sprites/interviev/brick_undest.png')
+    'brick_undest': load_image('sprites/interviev/brick_undest.png'),
+    'oblaco': load_image('sprites/interviev/oblaco.png'),
+    'trava': load_image('sprites/interviev/trava.png')
 }
 
 entity_images = {
@@ -135,7 +140,7 @@ def create_particles(position):
 
 
 class Entity(pygame.sprite.Sprite):
-    def __init__(self, tile_type, pos_x, pos_y):
+    def __init__(self, tile_type, pos_x, pos_y, up=0):
         super().__init__(entity_group, all_sprites)
         im = pygame.transform.scale(entity_images[tile_type], (tile_height, tile_width))
 
@@ -143,6 +148,7 @@ class Entity(pygame.sprite.Sprite):
                        pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3')]
         self.image = im
 
+        self.up = up
         self.rotation = 1
         self.player_jump = False
         self.player_vel_y = 0
@@ -153,7 +159,6 @@ class Entity(pygame.sprite.Sprite):
         self.tile_type = tile_type
         self.y_vel = 0
         self.anim_going = False
-
         self.make_hitboxes()
 
     def __getitem__(self, item):
@@ -180,34 +185,37 @@ class Entity(pygame.sprite.Sprite):
         self.head_hitbox.rect.y = self.rect.y
 
     def update(self):
-        if self.player_vel_y < 10 and self.player_jump:
-            self.player_vel_y += 1
-        if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
-            self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
-            self.rect.y -= self.diference
-            self.player_vel_y = 0
-            self.player_jump = False
+        if self.up <= 0:
+            if self.player_vel_y < 10 and self.player_jump:
+                self.player_vel_y += 1
+            if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
+                self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
+                self.rect.y -= self.diference
+                self.player_vel_y = 0
+                self.player_jump = False
+            else:
+                self.player_jump = True
+
+            if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
+                self.rotation = -1
+            elif pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
+                self.rotation = 1
+
+            self.rect.x += self.rotation * 3
+            self.rect.y += self.player_vel_y
+            self.hitbox_move()
         else:
-            self.player_jump = True
-
-        if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
-            self.rotation = -1
-        elif pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
-            self.rotation = 1
-
-        self.rect.x += self.rotation * 3
-        self.rect.y += self.player_vel_y
-        self.hitbox_move()
+            self.rect.y -= 1
+            self.up -= 1
 
 
 class Tile(pygame.sprite.Sprite):
     def __init__(self, tile_type, pos_x, pos_y):
         super().__init__(tiles_group, all_sprites)
         im = pygame.transform.scale(tile_images[tile_type], (tile_height, tile_width))
-
-        self.sounds = [pygame.mixer.Sound('data/sounds/mario_jump.mp3'),
-                       pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3')]
         self.image = im
+        self.sounds = [pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3'),
+                       pygame.mixer.Sound('data/sounds/sfx-6.mp3')]
         self.pos_in_level_x = pos_x
         self.pos_in_level_y = pos_y
         self.x_normal = pos_x * tile_width
@@ -215,11 +223,22 @@ class Tile(pygame.sprite.Sprite):
         self.rect = self.image.get_rect().move(
             self.x_normal, self.y_normal)
         self.tile_type = tile_type
+        self.used = False
+        self.spawn_animation = tile_height
         self.y_vel = 0
         self.anim_going = False
 
     def give_random(self):
         self.jump_anim()
+        if not self.used:
+            if random.choice([1, 2]) == 1:
+                Entity('life', self.rect.x / tile_width, self.rect.y // tile_height - 0.1, tile_height)
+                self.sounds[1].play()
+            else:
+                Gribocheck('grib', self.rect.x / tile_width, self.rect.y // tile_height - 0.2, tile_height)
+                self.sounds[1].play()
+            self.used = True
+            self.image = pygame.transform.scale(load_image('sprites/interface/Button_fon.png'), (tile_height, tile_width))
 
     def jump_anim(self):
         self.y_vel = -3
@@ -227,7 +246,7 @@ class Tile(pygame.sprite.Sprite):
 
     def destroy_anim(self):
         create_particles(self.rect.center)
-        self.sounds[1].play()
+        self.sounds[0].play()
 
     def update(self):
         if self.anim_going:
@@ -263,15 +282,28 @@ class Tile(pygame.sprite.Sprite):
             return abs(args[0] - self.rect.x)
 
 
-class Gribocheck(pygame.sprite.Sprite):
+class Decor(pygame.sprite.Sprite):
     def __init__(self, tile_type, pos_x, pos_y):
-        super().__init__(entity_group, all_sprites)
-        im = pygame.transform.scale(entity_images[tile_type], (tile_height, tile_width))
-
-        self.sounds = [pygame.mixer.Sound('data/sounds/mario_jump.mp3'),
-                       pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3')]
+        super().__init__(decor_group, all_sprites)
+        im = pygame.transform.scale(tile_images[tile_type], (tile_width * 2, tile_height))
         self.image = im
+        self.x_normal = pos_x * tile_width
+        self.y_normal = pos_y * tile_height
+        self.rect = self.image.get_rect().move(
+            self.x_normal, self.y_normal)
 
+
+class Gribocheck(pygame.sprite.Sprite):
+    def __init__(self, tile_type, pos_x, pos_y, up=0):
+        super().__init__(entity_group, all_sprites)
+        self.im = pygame.transform.scale(entity_images[tile_type], (tile_height, tile_width))
+
+        self.sounds = [pygame.mixer.Sound('data/sounds/sfx-15.mp3'), pygame.mixer.Sound('data/sounds/sfx-17.mp3')]
+        self.trup = 0
+        self.image = self.im
+        self.frame_time = 0
+
+        self.up = up
         self.rotation = 1
         self.player_jump = False
         self.player_vel_y = 0
@@ -281,16 +313,21 @@ class Gribocheck(pygame.sprite.Sprite):
             self.x_normal, self.y_normal)
         self.tile_type = tile_type
         self.y_vel = 0
-        self.anim_going = False
 
         self.make_hitboxes()
 
     def __getitem__(self, item):
-        if item == 'kill':
-            self.kill()
-            return 0, 150
-        else:
-            return -1, -50
+        if self.trup <= 0:
+            if item == 'kill':
+                self.trup = 20
+                self.image = pygame.transform.scale(load_image('sprites/interviev/gribocheck_.png'),
+                                                    (tile_height, tile_width))
+                self.sounds[1].play()
+                return 0, 150
+            else:
+                self.sounds[0].play()
+                return -1, -50
+        return 0, 0
 
     def make_hitboxes(self):
         self.left_hitbox = Hitbox(hitboxes_group, 0, 0, 2, self.rect.height - 3)
@@ -311,25 +348,44 @@ class Gribocheck(pygame.sprite.Sprite):
         self.head_hitbox.rect.x = self.rect.x
         self.head_hitbox.rect.y = self.rect.y
 
-    def update(self):
-        if self.player_vel_y < 10 and self.player_jump:
-            self.player_vel_y += 1
-        if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
-            self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
-            self.rect.y -= self.diference
-            self.player_vel_y = 0
-            self.player_jump = False
+    def anim(self):
+        if self.frame_time < 20:
+            self.image = pygame.transform.flip(self.im, True, False)
         else:
-            self.player_jump = True
+            self.image = self.im
+        if self.frame_time >= 40:
+            self.frame_time = 0
 
-        if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
-            self.rotation = -1
-        elif pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
-            self.rotation = 1
+    def update(self):
+        if self.trup <= 0:
+            if self.up <= 0:
+                if self.player_vel_y < 10 and self.player_jump:
+                    self.player_vel_y += 1
+                if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
+                    self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
+                    self.rect.y -= self.diference
+                    self.player_vel_y = 0
+                    self.player_jump = False
+                else:
+                    self.player_jump = True
 
-        self.rect.x += self.rotation * 3
-        self.rect.y += self.player_vel_y
-        self.hitbox_move()
+                if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
+                    self.rotation = -1
+                elif pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
+                    self.rotation = 1
+
+                self.frame_time += 3
+                self.rect.x += self.rotation * 3
+                self.rect.y += self.player_vel_y
+                self.hitbox_move()
+                self.anim()
+            else:
+                self.rect.y -= 1
+                self.up -= 1
+        else:
+            self.trup -= 1
+            if self.trup == 1:
+                self.kill()
 
 
 class Hitbox(pygame.sprite.Sprite):
@@ -411,13 +467,26 @@ class Player(pygame.sprite.Sprite):
             else:
                 self.player_jump = True
                 self.touch_floor = False
-            if pygame.sprite.spritecollideany(self, entity_group):
-                do = pygame.sprite.spritecollideany(self, entity_group)['']
-
+            do = False
+            if pygame.sprite.spritecollideany(self, entity_group) and pygame.sprite.spritecollideany(self.kill_hitbox, entity_group):
+                do = pygame.sprite.spritecollideany(self.kill_hitbox, entity_group)['kill']
+                if do[0] == 0 and do[1] != 0:
+                    self.player_vel_y = -3
                 if do[0] < 0:
                     if not self.invisibility:
                         self.lives += do[0]
-                        self.invisibility_time = 250
+                        self.invisibility_time = 100
+                        self.score += do[1]
+                else:
+                    self.lives += do[0]
+                    self.score += do[1]
+            elif pygame.sprite.spritecollideany(self, entity_group):
+                if not do:
+                    do = pygame.sprite.spritecollideany(self, entity_group)['']
+                if do[0] < 0:
+                    if not self.invisibility:
+                        self.lives += do[0]
+                        self.invisibility_time = 100
                         self.score += do[1]
                 else:
                     self.lives += do[0]
@@ -427,7 +496,8 @@ class Player(pygame.sprite.Sprite):
                 self.invisibility = False
             else:
                 self.invisibility = True
-            self.invisibility_time -= 3
+            if self.invisibility_time > 0:
+                self.invisibility_time -= 1
             self.hitbox_move()
             # если игрок(жмет кнопки) не идет, то он замедляется
             if not (keys[K_RIGHT] or keys[K_LEFT]):
@@ -473,6 +543,9 @@ class Player(pygame.sprite.Sprite):
         else:
             self.image = self.frames[-2]
             self.rotated()
+        if self.invisibility_time > 0:
+            if self.invisibility_time % 10 == 0 or self.invisibility_time % 10 == 5:
+                self.image = load_image('sprites/mario/None.png')
 
     def hitbox_move(self):
         self.right_hitbox.rect.x = self.rect.bottomright[0]
@@ -675,10 +748,11 @@ def draw_text(screen, text, number, *args):
 
 
 def draw_groups(screen, texts):
+    decor_group.draw(screen)
+    entity_group.draw(screen)
     particles_group.draw(screen)
     tiles_group.draw(screen)
     hitboxes_group.draw(screen)
-    entity_group.draw(screen)
     player_group.draw(screen)
     for i in range(0, len(texts), 2):
         draw_text(screen, texts[i], texts[i + 1], i * 200 + 100, 50, 40, 40)
@@ -688,7 +762,7 @@ def main_game():
     pygame.init()
     running = True
     in_losing = True
-    a = load_level('1_level.txt')
+    a = load_level('2_level.txt')
     pl, x, y = generate_level(a)
 
     camera = Camera()
@@ -698,7 +772,7 @@ def main_game():
     pygame.mixer.music.play(-1)
     lose_music = pygame.mixer.Sound('data/sounds/mario-lose.mp3')
     # mario_jump_sound = pygame.mixer.Sound('data/sounds/mario_jump.mp3')  # прыжок
-    # destroying_sound = pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3')  # разрушение
+    # destroying_sound =   # разрушение
     # sounds = [mario_jump_sound, destroying_sound]
     while running:
         screen.fill((92, 148, 252, 0))
@@ -710,9 +784,14 @@ def main_game():
         if keys[pygame.K_SPACE] or keys[K_UP]:
             pl.jump()
         if pl.rect.y > height:
+            running = False
             player_group.empty()
             tiles_group.empty()
             hitboxes_group.empty()
+            entity_group.empty()
+            pygame.mixer.music.stop()
+            lose_music.play()
+            sleep(2)
 
         camera.update(pl)
         for sprite in all_sprites:
