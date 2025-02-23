@@ -26,7 +26,7 @@ pause_buttons = pygame.sprite.Group()
 size = width, height = 1500, 1000
 screen_rect = (0, 0, width, height)
 screen = pygame.display.set_mode(size)
-FPS = 30
+FPS = 45
 clock = pygame.time.Clock()
 
 
@@ -157,11 +157,8 @@ class Entity(pygame.sprite.Sprite):
         self.make_hitboxes()
 
     def __getitem__(self, item):
-        if self.tile_type == 'life':
-            entity_group.remove(self)
-            return 1, 100, 0
-        if self.tile_type == 'grib':
-            return -1, -50, 3000
+        entity_group.remove(self)
+        return 1, 100
 
     def make_hitboxes(self):
         self.left_hitbox = Hitbox(hitboxes_group, 0, 0, 2, self.rect.height - 3)
@@ -289,10 +286,10 @@ class Gribocheck(pygame.sprite.Sprite):
         self.make_hitboxes()
 
     def __getitem__(self, item):
-        if self.tile_type == 'life':
-            entity_group.remove(self)
-            return 1, 100
-        if self.tile_type == 'grib':
+        if item == 'kill':
+            self.kill()
+            return 0, 150
+        else:
             return -1, -50
 
     def make_hitboxes(self):
@@ -347,14 +344,16 @@ class Player(pygame.sprite.Sprite):
         super().__init__(group, all_sprites)
         self.sounds = [pygame.mixer.Sound('data/sounds/mario_jump.mp3'),
                        pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3')]
+        # все что связано с анимкой
         self.frame_time = 0
         self.frames = []
         self.cut_frames()
         self.cur_frame = 0
 
         # очки и жизни
-        self.score = 0
+        self.score = 1
         self.lives = 1
+        self.in_losing = True
 
         # уязвим ли игрок сейчас
         self.invisibility = False
@@ -369,7 +368,7 @@ class Player(pygame.sprite.Sprite):
 
         self.height = 0
         self.width = 0
-        self.rotation = 1
+        self.rotation = 0
         self.image = self.frames[-2]
         self.image.set_colorkey((255, 255, 255))
 
@@ -381,80 +380,99 @@ class Player(pygame.sprite.Sprite):
         self.right_hitbox = Hitbox(hitboxes_group, 0, 0, 2, tile_height - 13)
         self.head_hitbox = Hitbox(hitboxes_group, 0, 0, tile_width - 10, 1)
         self.leg_hitbox = Hitbox(hitboxes_group, 0, 0, tile_width - 10, 1)
-        self.full_hitboxes = [self.left_hitbox, self.right_hitbox, self.leg_hitbox, self.head_hitbox]
+        self.kill_hitbox = Hitbox(hitboxes_group, 0, 0, self.rect.width - 10, tile_height // 2 - 20)
 
     def cut_frames(self):  # вырезка картинок для анимаций
         self.frames.append(pygame.transform.scale(load_image('sprites/mario/injump.png'), (tile_width, tile_height)))
         self.frames.append(pygame.transform.scale(load_image('sprites/mario/lose.png'), (tile_width, tile_height)))
         self.frames.append(pygame.transform.scale(load_image('sprites/mario/run_1.png'), (tile_width, tile_height)))
         self.frames.append(pygame.transform.scale(load_image('sprites/mario/run_2.png'), (tile_width, tile_height)))
+        self.frames.append(pygame.transform.scale(load_image('sprites/mario/run_3.png'), (tile_width, tile_height)))
         self.frames.append(pygame.transform.scale(load_image('sprites/mario/stay.png'), (tile_width, tile_height)))
         self.frames.append(pygame.transform.scale(load_image('sprites/mario/turn.png'), (tile_width, tile_height)))
 
     def update(self, keys=None):
-        if self.player_vel_y < 18 and self.player_jump:
-            self.player_vel_y += 1
-        # проверка на столкновения
-        self.floor()
+        if self.in_losing:
+            if self.player_vel_y < 18 and self.player_jump:
+                self.player_vel_y += 1
+            # проверка на столкновения
+            self.floor()
 
-        # проверка на удар с потолком
-        if pygame.sprite.spritecollideany(self.head_hitbox, tiles_group):
-            pygame.sprite.spritecollideany(self.head_hitbox, tiles_group)[self.player_vel_y]
-            self.player_vel_y = 1
-        # проверка на прикосновение с землей
-        if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
-            self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
-            self.rect.y -= self.diference
-            self.player_vel_y = 0
-            self.player_jump = False
-        else:
-            self.player_jump = True
-            self.touch_floor = False
-        if pygame.sprite.spritecollideany(self, entity_group):
-            do = pygame.sprite.spritecollideany(self, entity_group)[self.score]
-
-            if do[0] < 0:
-                if not self.invisibility:
-                    self.lives += do[0]
-                    self.invisibility_time = 250
-                    self.score += do[1]
+            # проверка на удар с потолком
+            if pygame.sprite.spritecollideany(self.head_hitbox, tiles_group):
+                pygame.sprite.spritecollideany(self.head_hitbox, tiles_group)[self.player_vel_y]
+                self.player_vel_y = 1
+            # проверка на прикосновение с землей
+            if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
+                self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
+                self.rect.y -= self.diference
+                self.player_vel_y = 0
+                self.player_jump = False
             else:
-                self.lives += do[0]
-                self.score += do[1]
+                self.player_jump = True
+                self.touch_floor = False
+            if pygame.sprite.spritecollideany(self, entity_group):
+                do = pygame.sprite.spritecollideany(self, entity_group)['']
 
-        if self.invisibility_time <= 0:
-            self.invisibility = False
+                if do[0] < 0:
+                    if not self.invisibility:
+                        self.lives += do[0]
+                        self.invisibility_time = 250
+                        self.score += do[1]
+                else:
+                    self.lives += do[0]
+                    self.score += do[1]
+
+            if self.invisibility_time <= 0:
+                self.invisibility = False
+            else:
+                self.invisibility = True
+            self.invisibility_time -= 3
+            self.hitbox_move()
+            # если игрок(жмет кнопки) не идет, то он замедляется
+            if not (keys[K_RIGHT] or keys[K_LEFT]):
+                if self.player_speed > 0:
+                    self.player_speed -= 1
+                elif self.player_speed < 0:
+                    self.player_speed += 1
+            self.walls()
+            print(self.player_jump)
+            print(self.player_vel_y)
+            # смещение после всех проверок
+            self.rect.x += self.player_speed
+            self.rect.y += self.player_vel_y
+            self.hitbox_move()
+            self.anim(keys)  # анимация (смена фреима)
         else:
-            self.invisibility = True
-        self.invisibility_time -= 3
-        self.hitbox_move()
-        # если игрок(жмет кнопки) не идет, то он замедляется
-        if not (keys[K_RIGHT] or keys[K_LEFT]):
-            if self.player_speed > 0:
-                self.player_speed -= 1
-            elif self.player_speed < 0:
-                self.player_speed += 1
-        self.walls()
-        print(self.player_jump)
-        print(self.player_vel_y)
-        # смещение после всех проверок
-        self.rect.x += self.player_speed
-        self.rect.y += self.player_vel_y
-        self.hitbox_move()
-        self.anim(keys)  # анимация (смена фреима)
+            self.stay_lose -= 1
+            if self.stay_lose <= 0:
+                self.rect.y += self.player_vel_y
+                self.player_vel_y += 0.4
 
     def get_stats(self):
         return self.lives, self.score
 
+    def rotated(self):
+        if self.rotation < 0:
+            self.image = pygame.transform.flip(self.image, True, False)
+
     def anim(self, keys):
         if self.player_jump:
             self.image = self.frames[0]
+            self.rotated()
         elif (keys[K_RIGHT] and self.player_speed < 0) or keys[K_LEFT] and self.player_speed > 0:
             self.image = self.frames[-1]
-        elif self.player_speed > 2:
-            self.image = self.frames[2]
+            self.rotated()
+        elif self.player_speed != 0:
+            if self.frame_time > 3:
+                self.cur_frame = (self.cur_frame + 1) % 4
+                self.image = self.frames[2:6][self.cur_frame]
+                self.frame_time = 0
+                self.rotated()
+            self.frame_time += 1
         else:
             self.image = self.frames[-2]
+            self.rotated()
 
     def hitbox_move(self):
         self.right_hitbox.rect.x = self.rect.bottomright[0]
@@ -469,6 +487,9 @@ class Player(pygame.sprite.Sprite):
         self.head_hitbox.rect.x = self.rect.x + 5
         self.head_hitbox.rect.y = self.rect.y
 
+        self.kill_hitbox.rect.x = self.rect.x + 5
+        self.kill_hitbox.rect.y = self.rect.y + tile_height // 2 + 20
+
     def floor(self):
         if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
             self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
@@ -477,6 +498,12 @@ class Player(pygame.sprite.Sprite):
             self.player_jump = False
         else:
             self.player_jump = True
+
+    def lose(self):
+        self.in_losing = False
+        self.player_vel_y = -10
+        self.stay_lose = 50
+        self.image = self.frames[1]
 
     def walls(self):
         if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group) and self.player_speed > 0:
@@ -490,46 +517,49 @@ class Player(pygame.sprite.Sprite):
             self.player_speed = 0
 
     def move_right(self):
-        self.floor()
-        self.hitbox_move()
-        if not pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
-            if self.player_speed < 10:
-                self.player_speed += 1
-        else:
-            if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.bottomright[1], 'x'):
-                diference = pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.x + tile_width,
-                                                                                                   'x')
-                self.rect.x -= diference
-                self.player_speed = 0
-
-            # self.rect = self.rect.move(self.player_speed, 0)
-        self.rotation = 1
-        self.hitbox_move()
-
-    def move_left(self):
-        self.floor()
-        self.hitbox_move()
-        if not pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
-            if self.player_speed > -10:
-                self.player_speed -= 1
-        else:
-            if pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.bottomleft[1], 'x'):
-                diference = pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.x - tile_width,
-                                                                                                  'x')
-                self.rect.x += diference
-                self.player_speed = 0
+        if self.in_losing:
+            self.floor()
+            self.hitbox_move()
+            if not pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
+                if self.player_speed < 10:
+                    self.player_speed += 1
+            else:
+                if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.bottomright[1], 'x'):
+                    diference = pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.x + tile_width,
+                                                                                                       'x')
+                    self.rect.x -= diference
+                    self.player_speed = 0
 
                 # self.rect = self.rect.move(self.player_speed, 0)
-        self.rotation = -1
-        self.hitbox_move()
+            self.rotation = 1
+            self.hitbox_move()
+
+    def move_left(self):
+        if self.in_losing:
+            self.floor()
+            self.hitbox_move()
+            if not pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
+                if self.player_speed > -10:
+                    self.player_speed -= 1
+            else:
+                if pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.bottomleft[1], 'x'):
+                    diference = pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.x - tile_width,
+                                                                                                      'x')
+                    self.rect.x += diference
+                    self.player_speed = 0
+
+                    # self.rect = self.rect.move(self.player_speed, 0)
+            self.rotation = -1
+            self.hitbox_move()
 
     def jump(self):
-        if not self.player_jump:
-            self.player_vel_y -= 15
-            self.rect.y -= 2
-            self.player_jump = True
-            self.sounds[0].play()
-        self.hitbox_move()
+        if self.in_losing:
+            if not self.player_jump:
+                self.player_vel_y -= 15
+                self.rect.y -= 2
+                self.player_jump = True
+                self.sounds[0].play()
+            self.hitbox_move()
 
 
 class Button(pygame.sprite.Sprite):
@@ -644,19 +674,20 @@ def draw_text(screen, text, number, *args):
         screen.blit(text, (text_x, text_y))
 
 
-def draw_groups(screen, args):
+def draw_groups(screen, texts):
     particles_group.draw(screen)
-    player_group.draw(screen)
     tiles_group.draw(screen)
     hitboxes_group.draw(screen)
     entity_group.draw(screen)
-    for i in range(0, len(args), 2):
-        draw_text(screen, args[i], args[i + 1], i * 200 + 100, 50, 40, 40)
+    player_group.draw(screen)
+    for i in range(0, len(texts), 2):
+        draw_text(screen, texts[i], texts[i + 1], i * 200 + 100, 50, 40, 40)
 
 
 def main_game():
     pygame.init()
     running = True
+    in_losing = True
     a = load_level('1_level.txt')
     pl, x, y = generate_level(a)
 
@@ -665,10 +696,10 @@ def main_game():
     # загружаем звуки
     pygame.mixer.music.load('data/sounds/super-mario-saundtrek.mp3')
     pygame.mixer.music.play(-1)
+    lose_music = pygame.mixer.Sound('data/sounds/mario-lose.mp3')
     # mario_jump_sound = pygame.mixer.Sound('data/sounds/mario_jump.mp3')  # прыжок
     # destroying_sound = pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3')  # разрушение
     # sounds = [mario_jump_sound, destroying_sound]
-
     while running:
         screen.fill((92, 148, 252, 0))
         keys = pygame.key.get_pressed()
@@ -692,6 +723,14 @@ def main_game():
                 player_group.empty()
                 tiles_group.empty()
                 hitboxes_group.empty()
+                entity_group.empty()
+                pygame.mixer.music.stop()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                running = False
+                player_group.empty()
+                tiles_group.empty()
+                hitboxes_group.empty()
+                entity_group.empty()
                 pygame.mixer.music.stop()
 
         tiles_group.update()
@@ -700,12 +739,18 @@ def main_game():
         particles_group.update()
 
         l_s = pl.get_stats()
-        if not l_s[0]:
-            terminate()
+
+        if l_s[0] == 0 and in_losing:
+            pl.lose()
+            in_losing = False
+            pygame.mixer.music.stop()
+            lose_music.play()
+
         draw_groups(screen, ('Score', l_s[1], 'lives', l_s[0]))
 
         pygame.display.flip()
         clock.tick(FPS)
 
 
-start_screen()
+while True:
+    start_screen()
