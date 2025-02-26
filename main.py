@@ -247,8 +247,8 @@ class Tile(pygame.sprite.Sprite):
                 self.sounds = [pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3'),
                                pygame.mixer.Sound('data/sounds/sfx-6.mp3')]
             else:
-                self.sounds = [pygame.mixer.Sound('data/sounds/silent.wav'),
-                               pygame.mixer.Sound('data/sounds/silent.wav')]
+                self.sounds = [pygame.mixer.Sound('data/sounds/silent.mp3'),
+                               pygame.mixer.Sound('data/sounds/silent.mp3')]
         self.pos_in_level_x = pos_x
         self.pos_in_level_y = pos_y
         self.x_normal = pos_x * tile_width
@@ -337,8 +337,8 @@ class Gribocheck(pygame.sprite.Sprite):
                 self.sounds = [pygame.mixer.Sound('data/sounds/sfx-15.mp3'),
                                pygame.mixer.Sound('data/sounds/sfx-17.mp3')]
             else:
-                self.sounds = [pygame.mixer.Sound('data/sounds/silent.wav'),
-                               pygame.mixer.Sound('data/sounds/silent.wav')]
+                self.sounds = [pygame.mixer.Sound('data/sounds/silent.mp3'),
+                               pygame.mixer.Sound('data/sounds/silent.mp3')]
 
         self.trup = 0
         self.image = self.im
@@ -446,7 +446,7 @@ class Player(pygame.sprite.Sprite):
                 self.sounds = [pygame.mixer.Sound('data/sounds/mario_jump.mp3')]
                 self.sounds[0].set_volume(0.3)
             else:
-                self.sounds = [pygame.mixer.Sound('data/sounds/silent.wav')]
+                self.sounds = [pygame.mixer.Sound('data/sounds/silent.mp3')]
         # все что связано с анимкой
         self.frame_time = 0
         self.frames = []
@@ -812,6 +812,9 @@ def level_select_screen():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                running = False
+                start_screen()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 l1.press(event.pos)
                 l2.press(event.pos)
@@ -942,7 +945,7 @@ def start_screen():
         if data["music"] == 1:
             pygame.mixer.music.load('data/sounds/mario-para-pa-para-pam-punk.mp3')
         else:
-            pygame.mixer.music.load('data/sounds/silent.wav')
+            pygame.mixer.music.load('data/sounds/silent.mp3')
     pygame.mixer.music.play(-1)
 
     start = Button(menu_sprites, 'sprites/interface/Play.png', False,
@@ -1080,10 +1083,10 @@ def main_game(level):
             lose_music = pygame.mixer.Sound('data/sounds/mario-lose.mp3')
             win_music = pygame.mixer.Sound('data/sounds/super-mario-fanfara-okonchaniya-urovnya-muzyka-iz-igry-nintendo.mp3')
         else:
-            pygame.mixer.music.load('data/sounds/silent.wav')
+            pygame.mixer.music.load('data/sounds/silent.mp3')
             pygame.mixer.music.play(-1)
-            lose_music = pygame.mixer.Sound('data/sounds/silent.wav')
-            win_music = pygame.mixer.Sound('data/sounds/silent.wav')
+            lose_music = pygame.mixer.Sound('data/sounds/silent.mp3')
+            win_music = pygame.mixer.Sound('data/sounds/silent.mp3')
     # mario_jump_sound = pygame.mixer.Sound('data/sounds/mario_jump.mp3')  # прыжок
     # destroying_sound =   # разрушение
     # sounds = [mario_jump_sound, destroying_sound]
