@@ -4,13 +4,13 @@ import sys
 import json
 import random
 
-from pygame import K_RIGHT, KSCAN_D, KSCAN_S, K_LEFT, KSCAN_A, K_UP
 from pygame.examples.aliens import Player
 from time import sleep
 
 particles_group = pygame.sprite.Group()
 decorative_fon = pygame.sprite.Group()
 
+finish_group = pygame.sprite.Group()
 decor_group = pygame.sprite.Group()
 entity_group = pygame.sprite.Group()
 all_sprites = pygame.sprite.Group()
@@ -18,9 +18,8 @@ hitboxes_group = pygame.sprite.Group()
 player_group = pygame.sprite.Group()
 tiles_group = pygame.sprite.Group()
 
-level_select_sprites = pygame.sprite.Group()
 menu_sprites = pygame.sprite.Group()
-pause_buttons = pygame.sprite.Group()
+finish_buttons = pygame.sprite.Group()
 
 size = width, height = 1500, 1000
 screen_rect = (0, 0, width, height)
@@ -68,7 +67,7 @@ def generate_level(level):
     return new_player, x, y
 
 
-def load_image(name, colorkey=None):
+def load_image(name):
     fullname = os.path.join('data', name)
     # если файл не существует, то выходим
     if not os.path.isfile(fullname):
@@ -109,6 +108,7 @@ class Finish(pygame.sprite.Sprite):
         self.y_normal = (pos_y - 1) * tile_height
         self.rect = self.image.get_rect().move(
             self.x_normal, self.y_normal)
+        self.finish_hitbox = Hitbox(finish_group, self.rect.x + 30, self.rect.y, tile_width * 2 - 60, 3)
 
     def __getitem__(self, item):  # для того чтобы проверить что делать с блоком при прикосновенний и тп
         return 0
@@ -186,8 +186,10 @@ class Entity(pygame.sprite.Sprite):
         self.make_hitboxes()
 
     def __getitem__(self, item):
-        entity_group.remove(self)
-        return 1, 100
+        if self.up <= 0:
+            entity_group.remove(self)
+            return 1, 100
+        return 0, 0
 
     def make_hitboxes(self):
         self.left_hitbox = Hitbox(hitboxes_group, 0, 0, 2, self.rect.height - 3)
@@ -213,7 +215,8 @@ class Entity(pygame.sprite.Sprite):
             if self.player_vel_y < 10 and self.player_jump:
                 self.player_vel_y += 1
             if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
-                self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
+                self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1],
+                                                                                              'y')
                 self.rect.y -= self.diference
                 self.player_vel_y = 0
                 self.player_jump = False
@@ -238,8 +241,14 @@ class Tile(pygame.sprite.Sprite):
         super().__init__(tiles_group, all_sprites)
         im = pygame.transform.scale(tile_images[tile_type], (tile_height, tile_width))
         self.image = im
-        self.sounds = [pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3'),
-                       pygame.mixer.Sound('data/sounds/sfx-6.mp3')]
+        with open('data/Settings/settings.json', 'r') as set:
+            data = json.load(set)
+            if data["sounds"] == 1:
+                self.sounds = [pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3'),
+                               pygame.mixer.Sound('data/sounds/sfx-6.mp3')]
+            else:
+                self.sounds = [pygame.mixer.Sound('data/sounds/silent.wav'),
+                               pygame.mixer.Sound('data/sounds/silent.wav')]
         self.pos_in_level_x = pos_x
         self.pos_in_level_y = pos_y
         self.x_normal = pos_x * tile_width
@@ -262,7 +271,8 @@ class Tile(pygame.sprite.Sprite):
                 Gribocheck('grib', self.rect.x / tile_width, self.rect.y // tile_height - 0.2, tile_height)
                 self.sounds[1].play()
             self.used = True
-            self.image = pygame.transform.scale(load_image('sprites/interface/Button_fon.png'), (tile_height, tile_width))
+            self.image = pygame.transform.scale(load_image('sprites/interface/Button_fon.png'),
+                                                (tile_height, tile_width))
 
     def jump_anim(self):
         self.y_vel = -3
@@ -321,14 +331,21 @@ class Gribocheck(pygame.sprite.Sprite):
     def __init__(self, tile_type, pos_x, pos_y, up=0):
         super().__init__(entity_group, all_sprites)
         self.im = pygame.transform.scale(entity_images[tile_type], (tile_height, tile_width))
+        with open('data/Settings/settings.json', 'r') as set:
+            data = json.load(set)
+            if data["sounds"] == 1:
+                self.sounds = [pygame.mixer.Sound('data/sounds/sfx-15.mp3'),
+                               pygame.mixer.Sound('data/sounds/sfx-17.mp3')]
+            else:
+                self.sounds = [pygame.mixer.Sound('data/sounds/silent.wav'),
+                               pygame.mixer.Sound('data/sounds/silent.wav')]
 
-        self.sounds = [pygame.mixer.Sound('data/sounds/sfx-15.mp3'), pygame.mixer.Sound('data/sounds/sfx-17.mp3')]
         self.trup = 0
         self.image = self.im
         self.frame_time = 0
 
         self.up = up
-        self.rotation = 1
+        self.rotation = random.choice([-1, 1])
         self.player_jump = False
         self.player_vel_y = 0
         self.x_normal = pos_x * tile_width
@@ -341,7 +358,7 @@ class Gribocheck(pygame.sprite.Sprite):
         self.make_hitboxes()
 
     def __getitem__(self, item):
-        if self.trup <= 0:
+        if self.trup <= 0 and self.up <= 0:
             if item == 'kill':
                 self.trup = 20
                 self.image = pygame.transform.scale(load_image('sprites/interviev/gribocheck_.png'),
@@ -386,7 +403,8 @@ class Gribocheck(pygame.sprite.Sprite):
                 if self.player_vel_y < 10 and self.player_jump:
                     self.player_vel_y += 1
                 if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
-                    self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
+                    self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(
+                        self.rect.bottomleft[1], 'y')
                     self.rect.y -= self.diference
                     self.player_vel_y = 0
                     self.player_jump = False
@@ -422,8 +440,13 @@ class Hitbox(pygame.sprite.Sprite):
 class Player(pygame.sprite.Sprite):
     def __init__(self, group, pos_x, pos_y):
         super().__init__(group, all_sprites)
-        self.sounds = [pygame.mixer.Sound('data/sounds/mario_jump.mp3'),
-                       pygame.mixer.Sound('data/sounds/cinder_block_impact_01.mp3')]
+        with open('data/Settings/settings.json', 'r') as set:
+            data = json.load(set)
+            if data["sounds"] == 1:
+                self.sounds = [pygame.mixer.Sound('data/sounds/mario_jump.mp3')]
+                self.sounds[0].set_volume(0.3)
+            else:
+                self.sounds = [pygame.mixer.Sound('data/sounds/silent.wav')]
         # все что связано с анимкой
         self.frame_time = 0
         self.frames = []
@@ -434,10 +457,14 @@ class Player(pygame.sprite.Sprite):
         self.score = 1
         self.lives = 1
         self.in_losing = True
+        self.level_time = 0
+        self.player_win_anim = False
+        self.end_level = False
 
         # уязвим ли игрок сейчас
         self.invisibility = False
         self.invisibility_time = 0
+        self.finish_anim = 0
 
         # параметры движения
         self.touch_floor = False
@@ -471,8 +498,19 @@ class Player(pygame.sprite.Sprite):
         self.frames.append(pygame.transform.scale(load_image('sprites/mario/stay.png'), (tile_width, tile_height)))
         self.frames.append(pygame.transform.scale(load_image('sprites/mario/turn.png'), (tile_width, tile_height)))
 
+    def finish(self):
+        return self.end_level
+
     def update(self, keys=None):
-        if self.in_losing:
+        if self.finish_anim > 0:
+            self.rect.y += 1
+            self.finish_anim -= 1
+            self.player_win_anim = True
+
+        elif self.finish_anim <= 0 and self.player_win_anim:
+            self.end_level = True
+
+        elif self.in_losing:
             if self.player_vel_y < 18 and self.player_jump:
                 self.player_vel_y += 1
             # проверка на столкновения
@@ -484,7 +522,8 @@ class Player(pygame.sprite.Sprite):
                 self.player_vel_y = 1
             # проверка на прикосновение с землей
             if pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group):
-                self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1], 'y')
+                self.diference = pygame.sprite.spritecollideany(self.leg_hitbox, tiles_group)(self.rect.bottomleft[1],
+                                                                                              'y')
                 self.rect.y -= self.diference
                 self.player_vel_y = 0
                 self.player_jump = False
@@ -492,7 +531,8 @@ class Player(pygame.sprite.Sprite):
                 self.player_jump = True
                 self.touch_floor = False
             do = False
-            if pygame.sprite.spritecollideany(self, entity_group) and pygame.sprite.spritecollideany(self.kill_hitbox, entity_group):
+            if pygame.sprite.spritecollideany(self, entity_group) and pygame.sprite.spritecollideany(self.kill_hitbox,
+                                                                                                     entity_group):
                 do = pygame.sprite.spritecollideany(self.kill_hitbox, entity_group)['kill']
                 if do[0] == 0 and do[1] != 0:
                     self.player_vel_y = -3
@@ -524,15 +564,16 @@ class Player(pygame.sprite.Sprite):
                 self.invisibility_time -= 1
             self.hitbox_move()
             # если игрок(жмет кнопки) не идет, то он замедляется
-            if not (keys[K_RIGHT] or keys[K_LEFT]):
+            if not (keys[pygame.K_RIGHT] or keys[pygame.K_LEFT]):
                 if self.player_speed > 0:
                     self.player_speed -= 1
                 elif self.player_speed < 0:
                     self.player_speed += 1
+
             self.walls()
-            print(self.player_jump)
-            print(self.player_vel_y)
+            self.level_time += 1
             # смещение после всех проверок
+
             self.rect.x += self.player_speed
             self.rect.y += self.player_vel_y
             self.hitbox_move()
@@ -544,7 +585,12 @@ class Player(pygame.sprite.Sprite):
                 self.player_vel_y += 0.4
 
     def get_stats(self):
-        return self.lives, self.score
+        return self.lives, self.score, self.level_time
+
+    def check_finish(self):
+        if pygame.sprite.spritecollideany(self.leg_hitbox, finish_group):
+            self.finish_anim = tile_height + 5
+            self.player_win = True
 
     def rotated(self):
         if self.rotation < 0:
@@ -554,7 +600,7 @@ class Player(pygame.sprite.Sprite):
         if self.player_jump:
             self.image = self.frames[0]
             self.rotated()
-        elif (keys[K_RIGHT] and self.player_speed < 0) or keys[K_LEFT] and self.player_speed > 0:
+        elif (keys[pygame.K_RIGHT] and self.player_speed < 0) or keys[pygame.K_LEFT] and self.player_speed > 0:
             self.image = self.frames[-1]
             self.rotated()
         elif self.player_speed != 0:
@@ -614,7 +660,9 @@ class Player(pygame.sprite.Sprite):
             self.player_speed = 0
 
     def move_right(self):
-        if self.in_losing:
+        if self.finish_anim > 0:
+            pass
+        elif self.in_losing:
             self.floor()
             self.hitbox_move()
             if not pygame.sprite.spritecollideany(self.right_hitbox, tiles_group):
@@ -623,7 +671,7 @@ class Player(pygame.sprite.Sprite):
             else:
                 if pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.bottomright[1], 'x'):
                     diference = pygame.sprite.spritecollideany(self.right_hitbox, tiles_group)(self.rect.x + tile_width,
-                                                                                                       'x')
+                                                                                               'x')
                     self.rect.x -= diference
                     self.player_speed = 0
 
@@ -632,7 +680,9 @@ class Player(pygame.sprite.Sprite):
             self.hitbox_move()
 
     def move_left(self):
-        if self.in_losing:
+        if self.finish_anim > 0:
+            pass
+        elif self.in_losing:
             self.floor()
             self.hitbox_move()
             if not pygame.sprite.spritecollideany(self.left_hitbox, tiles_group):
@@ -641,7 +691,7 @@ class Player(pygame.sprite.Sprite):
             else:
                 if pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.bottomleft[1], 'x'):
                     diference = pygame.sprite.spritecollideany(self.left_hitbox, tiles_group)(self.rect.x - tile_width,
-                                                                                                      'x')
+                                                                                              'x')
                     self.rect.x += diference
                     self.player_speed = 0
 
@@ -650,9 +700,11 @@ class Player(pygame.sprite.Sprite):
             self.hitbox_move()
 
     def jump(self):
-        if self.in_losing:
+        if self.finish_anim > 0:
+            pass
+        elif self.in_losing:
             if not self.player_jump:
-                self.player_vel_y -= 15
+                self.player_vel_y -= 20
                 self.rect.y -= 2
                 self.player_jump = True
                 self.sounds[0].play()
@@ -660,16 +712,18 @@ class Player(pygame.sprite.Sprite):
 
 
 class Button(pygame.sprite.Sprite):
-    def __init__(self, group, image='sprites/interviev/Bricks.png', image_var=None, command=None, *args):
+    def __init__(self, group, image='sprites/interviev/Bricks.png', image_var=None, command=None, level=None, *args):
         super().__init__(group)
         self.coords = args
         self.command = command
+        self.level = level
+        self.sound = pygame.mixer.Sound('data/sounds/sfx-4.mp3')
         if image_var:
             self.image_var = pygame.transform.scale(load_image(image_var), (args[2], args[3]))
-            self.image_var.set_colorkey((255, 255, 255))
+        else:
+            self.image_var = pygame.transform.scale(load_image(image), (args[2], args[3]))
         self.image_norm = load_image(image)
         self.image_norm = pygame.transform.scale(self.image_norm, (args[2], args[3]))
-        self.image_norm.set_colorkey((255, 255, 255))
         self.image = self.image_norm
         self.image = pygame.transform.scale(self.image, (args[2], args[3]))
 
@@ -687,14 +741,18 @@ class Button(pygame.sprite.Sprite):
 
     def in_mouse(self, pos):
         if self.rect.collidepoint(pos):
-            self.anim(clock)
+            self.anim(0)
         else:
             self.image = self.image_norm
 
     def press(self, pos):
         if self.rect.collidepoint(pos):
-            print(1)
-            self.command()
+            if self.level:
+                self.sound.play()
+                self.command(self.level)
+            else:
+                self.sound.play()
+                self.command()
 
 
 class Camera:
@@ -716,31 +774,186 @@ class Camera:
 
 def level_select_screen():
     pygame.init()
+    level_select_sprites = pygame.sprite.Group()
     running = True
-    l1 = Button(level_select_sprites, 'sprites/interface/Play.png', None, main_game, 100, 100, 100, 100)
+    with open('data/levels/level_results.json', 'r') as settings_file:
+        data = json.load(settings_file)
+    levels_info_texts = list()
+    for i in range(1, 6):
+        levels_info_texts.append(list())
+        levels_info_texts[i - 1].append(pygame.font.Font('data/Settings/press-start-k.ttf', 30).render(str(data[f"{i}_level.txt"]["score"]), False, (255, 218, 185)))
+        levels_info_texts[i - 1].append(pygame.font.Font('data/Settings/press-start-k.ttf', 30).render(str(data[f"{i}_level.txt"]["time"]), False, (175, 238, 238)))
+        levels_info_texts[i - 1].append(pygame.font.Font('data/Settings/press-start-k.ttf', 30).render(str(data[f"{i}_level.txt"]["result"]), False, (255, 69, 0)))
+    fon = pygame.transform.scale(load_image('sprites/interface/fon.png'), (width, height))
+    l_x = range(100, 1350, 250)
+    l1 = Button(level_select_sprites, 'sprites/interface/image_2025-02-25_22-27-22.png',
+                'sprites/interface/Play.png', main_game, '1_level.txt',
+                100,
+                300, 150, 150)
+    l2 = Button(level_select_sprites, 'sprites/interface/image_2025-02-25_22-29-59.png',
+                'sprites/interface/Play.png', main_game, '2_level.txt',
+                350,
+                300, 150, 150)
+    l3 = Button(level_select_sprites, 'sprites/interface/image_2025-02-25_22-32-51.png',
+                'sprites/interface/Play.png', main_game, '3_level.txt',
+                600,
+                300, 150, 150)
+    l4 = Button(level_select_sprites, 'sprites/interface/image_2025-02-25_22-37-35.png',
+                'sprites/interface/Play.png', main_game, '4_level.txt',
+                850,
+                300, 150, 150)
+    l5 = Button(level_select_sprites, 'sprites/interface/image_2025-02-25_22-40-36.png',
+                'sprites/interface/Play.png', main_game, '5_level.txt',
+                1100,
+                300, 150, 150)
 
     while running:
-        screen.fill((100, 100, 100, 0))
+        screen.blit(fon, (0, 0))
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             if event.type == pygame.MOUSEBUTTONDOWN:
-                l1.in_mouse(pygame.mouse.get_pos())
+                l1.press(event.pos)
+                l2.press(event.pos)
+                l3.press(event.pos)
+                l4.press(event.pos)
+                l5.press(event.pos)
+        l1.in_mouse(pygame.mouse.get_pos())
+        l2.in_mouse(pygame.mouse.get_pos())
+        l3.in_mouse(pygame.mouse.get_pos())
+        l4.in_mouse(pygame.mouse.get_pos())
+        l5.in_mouse(pygame.mouse.get_pos())
         level_select_sprites.draw(screen)
+        for y in range(len(l_x)):
+            for x in range(3):
+                screen.blit(levels_info_texts[y][x], (l_x[y], 500 + x * 30))
         pygame.display.flip()
     pygame.quit()
 
 
+def turn_sounds():
+    with open('data/Settings/settings.json', 'r') as settings_file:
+        data = json.load(settings_file)
+    with open('data/Settings/settings.json', 'w') as settings_file:
+        if data["sounds"] == 1:
+            data["sounds"] = 0
+        elif data["sounds"] == 0:
+            data["sounds"] = 1
+        json.dump(data, settings_file, indent=2)
+
+
+def turn_music():
+    with open('data/Settings/settings.json', 'r') as settings_file:
+        data = json.load(settings_file)
+    with open('data/Settings/settings.json', 'w') as settings_file:
+        if data["music"] == 1:
+            data["music"] = 0
+        elif data["music"] == 0:
+            data["music"] = 1
+        json.dump(data, settings_file, indent=2)
+
+
+def clear_results():
+    data = {
+        "1_level.txt": {
+            "score": 0,
+            "time": 0,
+            "result": 0
+        },
+        "2_level.txt": {
+            "score": 0,
+            "time": 0,
+            "result": 0
+        },
+        "3_level.txt": {
+            "score": 0,
+            "time": 0,
+            "result": 0
+        },
+        "4_level.txt": {
+            "score": 0,
+            "time": 0,
+            "result": 0
+        },
+        "5_level.txt": {
+            "score": 0,
+            "time": 0,
+            "result": 0
+        }
+    }
+    with open('data/levels/level_results.json', 'w') as lv:
+        json.dump(data, lv, indent=2)
+
+
+def settings_screen():
+    settings_sprites = pygame.sprite.Group()
+    running = True
+    font = pygame.font.Font('data/Settings/press-start-k.ttf', 40)
+
+    reset_results_text = font.render(f'reset results', False, (255, 255, 255))
+    turn_s_text = font.render(f'turn sounds', False, (255, 255, 255))
+    turn_m_text = font.render(f'turn music', False, (255, 255, 255))
+
+    fon = pygame.transform.scale(load_image('sprites/interface/fon.png'), (width, height))
+    screen.blit(fon, (0, 0))
+    sounds_button = Button(settings_sprites, 'sprites/interface/image_2025-02-25_22-03-12.png', False,
+                           turn_sounds, None,
+                           width // 2 - 200,
+                           height // 2 - 250, 100, 100)
+    music_button = Button(settings_sprites, 'sprites/interface/image_2025-02-25_22-03-12.png', False,
+                          turn_music, None,
+                          width // 2 - 200,
+                          height // 2 - 100, 100, 100)
+    reset_results = Button(settings_sprites, 'sprites/interface/image_2025-02-25_21-39-54.png', False,
+                           clear_results, None,
+                           width // 2 - 200,
+                           height // 2 + 50, 100, 100)
+    continue_but = Button(settings_sprites, 'sprites/interface/image_2025-02-25_21-50-38.png',
+                          'sprites/interface/image_2025-02-25_21-52-20.png',
+                          start_screen, None, width // 2 + 500, height // 2 + 350, 100, 100)
+    while running:
+        screen.blit(fon, (0, 0))
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                continue_but.press(event.pos)
+                reset_results.press(event.pos)
+                music_button.press(event.pos)
+                sounds_button.press(event.pos)
+            elif event.type == pygame.MOUSEMOTION:
+                pass
+        continue_but.in_mouse(pygame.mouse.get_pos())
+        sounds_button.in_mouse(pygame.mouse.get_pos())
+        music_button.in_mouse(pygame.mouse.get_pos())
+        settings_sprites.draw(screen)
+        screen.blit(reset_results_text, (width // 2 - 50, height // 2 + 70))
+        screen.blit(turn_m_text, (width // 2 - 50, height // 2 - 70))
+        screen.blit(turn_s_text, (width // 2 - 50, height // 2 - 230))
+        pygame.display.flip()
+
+
 def start_screen():
     pygame.init()
-    fon = pygame.transform.scale(load_image('sprites/interface/menu_fon.jpg'), (width, height))
+    fon = pygame.transform.scale(load_image('sprites/interface/fon.png'), (width, height))
     screen.blit(fon, (0, 0))
-    font = pygame.font.Font(None, 30)
-    text_coord = 50
+    with open('data/Settings/settings.json', 'r') as set:
+        data = json.load(set)
+        if data["music"] == 1:
+            pygame.mixer.music.load('data/sounds/mario-para-pa-para-pam-punk.mp3')
+        else:
+            pygame.mixer.music.load('data/sounds/silent.wav')
+    pygame.mixer.music.play(-1)
 
-    start = Button(menu_sprites, 'sprites/interface/Play.png', 'sprites/interface/Button_fon.png', main_game,
-                   width // 2 - 50,
+    start = Button(menu_sprites, 'sprites/interface/Play.png', False,
+                   level_select_screen, None,
+                   width // 2 + 50,
                    height // 2 - 50, 100, 100)
+    settings_but = Button(menu_sprites, 'sprites/interface/image_2025-02-25_22-03-12.png',
+                          'sprites/interface/image_2025-02-25_22-17-50.png',
+                          settings_screen, None,
+                          width // 2 - 100,
+                          height // 2 - 50, 100, 100)
 
     while True:
         screen.blit(fon, (0, 0))
@@ -749,9 +962,11 @@ def start_screen():
                 terminate()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 start.press(event.pos)
+                settings_but.press(event.pos)
             elif event.type == pygame.MOUSEMOTION:
                 pass
         start.in_mouse(pygame.mouse.get_pos())
+        settings_but.in_mouse(pygame.mouse.get_pos())
         menu_sprites.draw(screen)
         pygame.display.flip()
         clock.tick(10)
@@ -775,66 +990,171 @@ def draw_groups(screen, texts):
     decor_group.draw(screen)
     entity_group.draw(screen)
     particles_group.draw(screen)
-    hitboxes_group.draw(screen)
+    # hitboxes_group.draw(screen)
     player_group.draw(screen)
     tiles_group.draw(screen)
     for i in range(0, len(texts), 2):
-        draw_text(screen, texts[i], texts[i + 1], i * 200 + 100, 50, 40, 40)
+        draw_text(screen, texts[i], texts[i + 1], i * 200 + 50, 50, 40, 40)
 
 
-def main_game():
+def finish_screen(score, time, level):
+    running = True
+    level_int = int(level.split('_')[0])
+    font = pygame.font.Font('data/Settings/press-start-k.ttf', 60)
+
+    text_score = font.render(f'score: {score}', False, (255, 255, 255))
+    text_time = font.render(f'time: {time}', False, (255, 255, 255))
+
+    restart_button = Button(finish_buttons, 'sprites/interface/image_2025-02-25_21-39-54.png',
+                            'sprites/interface/image_2025-02-25_21-53-47.png',
+                            main_game, level, width // 2 - 50, height // 2 + 200, 100, 100)
+    select_level = Button(finish_buttons, 'sprites/interface/image_2025-02-25_21-50-38.png',
+                          'sprites/interface/image_2025-02-25_21-52-20.png',
+                          start_screen, None, width // 2 - 350, height // 2 + 150, 100, 100)
+    if level_int != 5:
+        continue_button = Button(finish_buttons, 'sprites/interface/Play.png', None,
+                                 main_game, f'{level_int + 1}_level.txt',
+                                 width // 2 + 250, height // 2 + 150, 100, 100)
+
+    new_rec = False
+    with open('data/levels/level_results.json', 'r') as last_level_result:
+        data = json.load(last_level_result)
+
+        last_score = data[level]["score"]
+        last_time = data[level]["time"]
+        last_result = data[level]["result"]
+        result = int(score * (300 / time))
+
+        result_text = font.render(f'result: {result}', False, (255, 255, 255))
+        if result >= last_result:
+            data[level]["score"] = score
+            data[level]["time"] = time
+            data[level]["result"] = result
+            new_rec = True
+            with open('data/levels/level_results.json', 'w') as level_result:
+                json.dump(data, level_result, indent=2)
+    if new_rec:
+        text_new_rec = font.render(f'new record', False, (255, 200, 200))
+
+    while running:
+        screen.fill((92, 148, 250))
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                restart_button.press(event.pos)
+                select_level.press(event.pos)
+                if level_int != 5:
+                    continue_button.press(event.pos)
+            elif event.type == pygame.MOUSEMOTION:
+                pass
+        restart_button.in_mouse(pygame.mouse.get_pos())
+        select_level.in_mouse(pygame.mouse.get_pos())
+        if level_int != 5:
+            continue_button.in_mouse(pygame.mouse.get_pos())
+        screen.blit(text_score, (400, 200))
+        screen.blit(text_time, (450, 270))
+        screen.blit(result_text, (400, 340))
+        if new_rec:
+            screen.blit(text_new_rec, (400, 430))
+        finish_buttons.draw(screen)
+        pygame.display.flip()
+
+
+def main_game(level):
     pygame.init()
     running = True
     in_losing = True
-    a = load_level('2_level.txt')
+    level = level
+    a = load_level(level)
     pl, x, y = generate_level(a)
 
     camera = Camera()
 
     # загружаем звуки
-    pygame.mixer.music.load('data/sounds/super-mario-saundtrek.mp3')
-    pygame.mixer.music.play(-1)
-    lose_music = pygame.mixer.Sound('data/sounds/mario-lose.mp3')
+    with open('data/Settings/settings.json', 'r') as set:
+        data = json.load(set)
+        if data["music"] == 1:
+            pygame.mixer.music.load('data/sounds/super-mario-saundtrek.mp3')
+            pygame.mixer.music.play(-1)
+            lose_music = pygame.mixer.Sound('data/sounds/mario-lose.mp3')
+            win_music = pygame.mixer.Sound('data/sounds/super-mario-fanfara-okonchaniya-urovnya-muzyka-iz-igry-nintendo.mp3')
+        else:
+            pygame.mixer.music.load('data/sounds/silent.wav')
+            pygame.mixer.music.play(-1)
+            lose_music = pygame.mixer.Sound('data/sounds/silent.wav')
+            win_music = pygame.mixer.Sound('data/sounds/silent.wav')
     # mario_jump_sound = pygame.mixer.Sound('data/sounds/mario_jump.mp3')  # прыжок
     # destroying_sound =   # разрушение
     # sounds = [mario_jump_sound, destroying_sound]
     while running:
         screen.fill((92, 148, 252, 0))
         keys = pygame.key.get_pressed()
-        if keys[K_RIGHT]:
+        if keys[pygame.K_RIGHT]:
             pl.move_right()
-        elif keys[K_LEFT]:
+        elif keys[pygame.K_LEFT]:
             pl.move_left()
-        if keys[pygame.K_SPACE] or keys[K_UP]:
+        if keys[pygame.K_SPACE] or keys[pygame.K_UP]:
             pl.jump()
         if pl.rect.y > height:
             running = False
             player_group.empty()
             tiles_group.empty()
+            decor_group.empty()
             hitboxes_group.empty()
             entity_group.empty()
+            all_sprites.empty()
+            finish_buttons.empty()
+            finish_group.empty()
             pygame.mixer.music.stop()
-            lose_music.play()
-            sleep(2)
+            if in_losing:
+                lose_music.play()
+            sleep(1)
+            main_game(level)
 
         camera.update(pl)
         for sprite in all_sprites:
             camera.apply(sprite)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                terminate()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
+                pl.check_finish()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
                 player_group.empty()
                 tiles_group.empty()
+                decor_group.empty()
                 hitboxes_group.empty()
                 entity_group.empty()
+                all_sprites.empty()
+                finish_buttons.empty()
+                finish_group.empty()
+                pygame.mixer.music.stop()
+                start_screen()
+            if event.type == pygame.QUIT:
+                running = False
+                player_group.empty()
+                tiles_group.empty()
+                decor_group.empty()
+                hitboxes_group.empty()
+                entity_group.empty()
+                all_sprites.empty()
+                finish_buttons.empty()
+                finish_group.empty()
                 pygame.mixer.music.stop()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                 running = False
                 player_group.empty()
                 tiles_group.empty()
+                decor_group.empty()
                 hitboxes_group.empty()
                 entity_group.empty()
+                all_sprites.empty()
+                finish_buttons.empty()
+                finish_group.empty()
                 pygame.mixer.music.stop()
+                main_game(level)
 
         tiles_group.update()
         player_group.update(keys)
@@ -848,8 +1168,24 @@ def main_game():
             in_losing = False
             pygame.mixer.music.stop()
             lose_music.play()
+        if pl.finish():
+            running = False
+            player_group.empty()
+            tiles_group.empty()
+            decor_group.empty()
+            hitboxes_group.empty()
+            entity_group.empty()
+            all_sprites.empty()
+            finish_buttons.empty()
+            finish_group.empty()
+            pygame.mixer.music.stop()
+            win_music.play()
+            finish_screen(l_s[1], l_s[2] // FPS, level)
 
-        draw_groups(screen, ('Score', l_s[1], 'lives', l_s[0]))
+        draw_groups(screen, ('Score', l_s[1],
+                             'Lives', l_s[0],
+                             'Time', l_s[2] // FPS,
+                             'level', level.split('_')[0]))
 
         pygame.display.flip()
         clock.tick(FPS)

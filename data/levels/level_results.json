@@ -1,3 +1,27 @@
 {
-  "1_level.txt": 1
+  "1_level.txt": {
+    "score": 1051,
+    "time": 31,
+    "result": 10170
+  },
+  "2_level.txt": {
+    "score": 0,
+    "time": 0,
+    "result": 0
+  },
+  "3_level.txt": {
+    "score": 0,
+    "time": 0,
+    "result": 0
+  },
+  "4_level.txt": {
+    "score": 0,
+    "time": 0,
+    "result": 0
+  },
+  "5_level.txt": {
+    "score": 0,
+    "time": 0,
+    "result": 0
+  }
 }
