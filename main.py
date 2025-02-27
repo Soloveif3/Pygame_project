@@ -993,7 +993,7 @@ def draw_groups(screen, texts):
     decor_group.draw(screen)
     entity_group.draw(screen)
     particles_group.draw(screen)
-    # hitboxes_group.draw(screen)
+    hitboxes_group.draw(screen)
     player_group.draw(screen)
     tiles_group.draw(screen)
     for i in range(0, len(texts), 2):
